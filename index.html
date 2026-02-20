@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appliance Age Decoder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+    header { text-align: center; margin-bottom: 2.5rem; }
+    header h1 { font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    header p { color: #94a3b8; margin-top: 0.5rem; font-size: 0.95rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 1rem; padding: 2rem; width: 100%; max-width: 520px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+    .field { margin-bottom: 1.25rem; }
+    .field label { display: block; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 0.45rem; }
+    .field select, .field input { width: 100%; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.75rem 1rem; border-radius: 0.6rem; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    .field select:focus, .field input:focus { border-color: #38bdf8; }
+    .field select option { background: #1e293b; }
+    .hint { font-size: 0.78rem; color: #64748b; margin-top: 0.35rem; }
+    button#decodeBtn { width: 100%; padding: 0.85rem; background: linear-gradient(135deg, #38bdf8, #818cf8); color: #0f172a; font-weight: 700; font-size: 1rem; border: none; border-radius: 0.6rem; cursor: pointer; margin-top: 0.5rem; transition: opacity 0.2s; }
+    button#decodeBtn:hover { opacity: 0.9; }
+    #result { margin-top: 1.5rem; }
+    .result-box { background: #0f172a; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.25rem 1.5rem; }
+    .result-box.success { border-color: rgba(34,211,238,0.33); }
+    .result-box.error { border-color: rgba(248,113,113,0.33); }
+    .result-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 0.75rem; }
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .stat-label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #38bdf8; line-height: 1.2; }
+    .stat-value.large { font-size: 2.5rem; }
+    .stat-sub { font-size: 0.8rem; color: #94a3b8; margin-top: 0.15rem; }
+    .confidence { margin-top: 1rem; font-size: 0.8rem; color: #64748b; }
+    .confidence-bar { height: 4px; background: #1e293b; border-radius: 2px; margin-top: 0.3rem; overflow: hidden; }
+    .confidence-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #38bdf8, #818cf8); }
+    .error-msg { color: #f87171; font-size: 0.9rem; }
+    .supported-brands { margin-top: 2rem; max-width: 520px; width: 100%; }
+    .supported-brands h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 0.75rem; }
+    .brand-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .chip { background: #1e293b; border: 1px solid #334155; border-radius: 999px; padding: 0.2rem 0.7rem; font-size: 0.75rem; color: #94a3b8; }
+    footer { margin-top: 3rem; color: #334155; font-size: 0.78rem; text-align: center; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>&#x1F527; Appliance Age Decoder</h1>
+  <p>Enter your brand, serial number, and model to find out how old your appliance is.</p>
+</header>
+<div class="card">
+  <div class="field">
+    <label for="brand">Brand</label>
+    <select id="brand">
+      <option value="">Select a Brand</option>
+      <option value="whirlpool">Whirlpool</option>
+      <option value="maytag">Maytag</option>
+      <option value="kitchenaid">KitchenAid</option>
+      <option value="roper">Roper</option>
+      <option value="estate">Estate</option>
+      <option value="amana">Amana</option>
+      <option value="jennair">Jenn-Air</option>
+      <option value="ge">GE (General Electric)</option>
+      <option value="hotpoint">Hotpoint</option>
+      <option value="frigidaire">Frigidaire</option>
+      <option value="electrolux">Electrolux</option>
+      <option value="gibson">Gibson</option>
+      <option value="kelvinator">Kelvinator</option>
+      <option value="westinghouse">White-Westinghouse</option>
+      <option value="tappan">Tappan</option>
+      <option value="lg">LG</option>
+      <option value="samsung">Samsung</option>
+      <option value="bosch">Bosch</option>
+      <option value="rheem">Rheem</option>
+      <option value="ruud">Ruud</option>
+      <option value="aosmith">A.O. Smith</option>
+      <option value="state">State Water Heaters</option>
+      <option value="kenmore">Kenmore / Sears</option>
+      <option value="speedqueen">Speed Queen</option>
+      <option value="subzero">Sub-Zero</option>
+      <option value="viking">Viking</option>
+      <option value="thermador">Thermador</option>
+      <option value="dacor">Dacor</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="serial">Serial Number</label>
+    <input type="text" id="serial" placeholder="e.g. CS3406489" autocomplete="off" spellcheck="false">
+    <div class="hint">Enter the full serial number exactly as it appears on the appliance label.</div>
+  </div>
+  <div class="field">
+    <label for="model">Model Number <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional &mdash; improves Kenmore accuracy)</span></label>
+    <input type="text" id="model" placeholder="e.g. WTW5000DW" autocomplete="off" spellcheck="false">
+  </div>
+  <button id="decodeBtn" onclick="decode()">Decode Age</button>
+  <div id="result"></div>
+</div>
+<div class="supported-brands">
+  <h3>Supported Brands</h3>
+  <div class="brand-chips" id="chipContainer"></div>
+</div>
+<footer>
+  Serial number conventions sourced from manufacturer service documentation and appliance repair industry references.<br>
+  Results are estimates. Accuracy varies by brand, product line, and era.
+</footer>
+<script>
+var MONTHS=['','January','February','March','April','May','June','July','August','September','October','November','December'];
+function weekToMonth(w){if(!w||w<1||w>53)return null;return Math.min(12,Math.ceil(w/4.33));}
+
+var BRANDS={
+  whirlpool:{
+    name:'Whirlpool',
+    decode:function(s){
+      if(s.length<5)return null;
+      var yearChar=s[1].toUpperCase();
+      var week=parseInt(s.substring(2,4),10);
+      var yearMap={
+        'C':[1990,2010],'D':[1991,2011],'E':[1992,2012],
+        'F':[1993,2013],'G':[1994,2014],'H':[1995,2015],
+        'J':[1996,2016],'K':[1997,2017],'L':[1998,2018],
+        'M':[1999,2019],'N':[2000,2020],'P':[2001,2021],
+        'R':[2002,2022],'S':[2003,2023],'T':[2004,2024],
+        'V':[2005,2025],'W':[2006,2026],'X':[2007,2027],
+        'Y':[2008,2028],'Z':[2009,2029]
+      };
+      var years=yearMap[yearChar];
+      if(!years)return null;
+      if(isNaN(week)||week<1||week>53)return null;
+      var now=new Date().getFullYear();
+      if(years[1]<=now){
+        return{year:years[1],week:week,confidence:75,note:'Could also be '+years[0]+' — letter codes repeat every 20 years. Check appliance condition.'};
+      }
+      return{year:years[0],week:week,confidence:85};
+    }
+  },
+  maytag:{name:'Maytag',family:'whirlpool'},
+  kitchenaid:{name:'KitchenAid',family:'whirlpool'},
+  roper:{name:'Roper',family:'whirlpool'},
+  estate:{name:'Estate',family:'whirlpool'},
+  amana:{name:'Amana',family:'whirlpool'},
+  jennair:{name:'Jenn-Air',family:'whirlpool'},
+
+  ge:{
+    name:'GE',
+    decode:function(s){
+      if(s.length<2)return null;
+      var monthMap={'A':1,'D':4,'F':6,'G':7,'H':8,'J':9,'L':10,'M':11,'R':12,'S':9,'T':10,'V':11,'Z':12};
+      var yearMap={
+        'D':1994,'E':1995,'F':1996,'G':1997,'H':1998,'J':1999,
+        'K':2000,'L':2001,'M':2002,'N':2003,'P':2004,'R':2005,
+        'S':2006,'T':2007,'V':2008,'W':2009,'X':2010,'Y':2011,
+        'Z':2012,'A':2013,'B':2014,'C':2015
+      };
+      var monthChar=s[0].toUpperCase();
+      var yearChar=s[1].toUpperCase();
+      var year=yearMap[yearChar];
+      if(!year)return null;
+      return{year:year,month:monthMap[monthChar]||null,confidence:82};
+    }
+  },
+  hotpoint:{name:'Hotpoint',family:'ge'},
+
+  frigidaire:{
+    name:'Frigidaire',
+    decode:function(s){
+      if(s.length<2)return null;
+      var c0=s[0].toUpperCase();
+      var c1=s[1].toUpperCase();
+      var yearOrder='ABCDEFGHJKLMNPRSTUVWXYZ';
+      var BASE_YEAR=1985;
+      var yearIdx=yearOrder.indexOf(c0);
+      if(yearIdx===-1)return null;
+      var year=BASE_YEAR+yearIdx;
+      var monthMap={'A':1,'B':2,'C':3,'D':4,'E':5,'F':6,'G':7,'H':8,'J':9,'K':10,'L':11,'M':12};
+      var month=monthMap[c1]||null;
+      return{year:year,month:month,confidence:85};
+    }
+  },
+  electrolux:{name:'Electrolux',family:'frigidaire'},
+  gibson:{name:'Gibson',family:'frigidaire'},
+  kelvinator:{name:'Kelvinator',family:'frigidaire'},
+  westinghouse:{name:'White-Westinghouse',family:'frigidaire'},
+  tappan:{name:'Tappan',family:'frigidaire'},
+
+  lg:{
+    name:'LG',
+    decode:function(s){
+      if(s.length<5)return null;
+      var y2=parseInt(s.substring(1,3),10);
+      var week=parseInt(s.substring(3,5),10);
+      if(isNaN(y2))return null;
+      var currentYY=new Date().getFullYear()%100;
+      var year=(y2<=currentYY+1)?(2000+y2):(1900+y2);
+      return{year:year,week:isNaN(week)?null:week,confidence:82};
+    }
+  },
+
+  samsung:{
+    name:'Samsung',
+    decode:function(s){
+      if(s.length<6)return null;
+      var yearMap={
+        'A':2001,'B':2002,'C':2003,'D':2004,'E':2005,'F':2006,
+        'G':2007,'H':2008,'J':2009,'K':2010,'L':2011,'M':2012,
+        'N':2013,'P':2014,'R':2015,'S':2016,'T':2017,'V':2018,
+        'W':2019,'X':2020,'Y':2021,'Z':2022
+      };
+      var yearChar=s[3].toUpperCase();
+      var week=parseInt(s.substring(4,6),10);
+      var year=yearMap[yearChar];
+      if(!year)return null;
+      return{year:year,week:isNaN(week)?null:week,confidence:75,note:'Samsung serial format varies by product line. Verify against the label date if available.'};
+    }
+  },
+
+  bosch:{
+    name:'Bosch',
+    decode:function(s){
+      var m=s.match(/^FD\s*(\d{2})(\d{2})/i);
+      if(m){
+        var yr=parseInt(m[1],10);
+        var wk=parseInt(m[2],10);
+        var year=yr+(yr>=88?1900:2000);
+        return{year:year,week:wk,confidence:92,note:'FD format — highly reliable.'};
+      }
+      var y2=parseInt(s.substring(0,2),10);
+      var wk2=parseInt(s.substring(2,4),10);
+      if(!isNaN(y2)&&y2>=80){
+        return{year:1900+y2,week:isNaN(wk2)?null:wk2,confidence:65};
+      }
+      return null;
+    }
+  },
+  thermador:{name:'Thermador',family:'bosch'},
+
+  rheem:{
+    name:'Rheem',
+    decode:function(s){
+      if(s.length<4)return null;
+      var week=parseInt(s.substring(0,2),10);
+      var y2=parseInt(s.substring(2,4),10);
+      if(isNaN(week)||isNaN(y2))return null;
+      if(week<1||week>53)return null;
+      var year=y2+(y2>=70?1900:2000);
+      return{year:year,week:week,confidence:88};
+    }
+  },
+  ruud:{name:'Ruud',family:'rheem'},
+
+  aosmith:{
+    name:'A.O. Smith',
+    decode:function(s){
+      if(s.length<4)return null;
+      var decadeMap={'A':1964,'B':1974,'C':1984,'D':1994,'E':2004,'F':2014,'G':2024};
+      var base=decadeMap[s[0].toUpperCase()];
+      if(!base)return null;
+      var yr=parseInt(s[1],10);
+      var week=parseInt(s.substring(2,4),10);
+      if(isNaN(yr))return null;
+      return{year:base+yr,week:isNaN(week)?null:week,confidence:90};
+    }
+  },
+  state:{name:'State Water Heaters',family:'aosmith'},
+
+  kenmore:{
+    name:'Kenmore / Sears',
+    decode:function(s,model){
+      var PREFIX_MAP={
+        '110':'whirlpool','106':'whirlpool','562':'whirlpool','665':'whirlpool',
+        '253':'frigidaire','257':'frigidaire',
+        '795':'lg','796':'lg',
+        '363':'ge','587':'ge',
+        '867':'rheem','640':'aosmith'
+      };
+      if(model&&model.length>=3){
+        var prefix=model.replace(/[^0-9]/g,'').substring(0,3);
+        var mfr=PREFIX_MAP[prefix];
+        if(mfr&&BRANDS[mfr]&&BRANDS[mfr].decode){
+          var r=BRANDS[mfr].decode(s,model);
+          if(r)return Object.assign({},r,{note:'Decoded as '+BRANDS[mfr].name+' (Kenmore OEM — prefix '+prefix+')'});
+        }
+      }
+      var attempts=['whirlpool','frigidaire','ge','lg'];
+      for(var i=0;i<attempts.length;i++){
+        var r2=BRANDS[attempts[i]].decode(s,model);
+        if(r2)return Object.assign({},r2,{confidence:Math.max(30,(r2.confidence||65)-20),note:'Best guess ('+BRANDS[attempts[i]].name+' format) — enter your model number for accurate OEM identification.'});
+      }
+      return null;
+    }
+  },
+
+  speedqueen:{
+    name:'Speed Queen',
+    decode:function(s){
+      if(s.length<6)return null;
+      var y2=parseInt(s.substring(2,4),10);
+      var week=parseInt(s.substring(4,6),10);
+      if(isNaN(y2))return null;
+      var currentYY=new Date().getFullYear()%100;
+      var year=(y2<=currentYY+1)?(2000+y2):(1900+y2);
+      return{year:year,week:isNaN(week)?null:week,confidence:75};
+    }
+  },
+
+  subzero:{
+    name:'Sub-Zero',
+    decode:function(s){
+      if(s.length<5)return null;
+      var y2=parseInt(s.substring(0,2),10);
+      var week=parseInt(s.substring(2,4),10);
+      if(!isNaN(y2)&&y2>=0&&y2<=35){
+        return{year:2000+y2,week:isNaN(week)?null:week,confidence:60,note:'Sub-Zero serial format varies by era. Cross-check with the label date stamp if present.'};
+      }
+      return null;
+    }
+  },
+
+  viking:{
+    name:'Viking',
+    decode:function(s){
+      var y4=parseInt(s.substring(0,4),10);
+      if(y4>=1980&&y4<=2035)return{year:y4,confidence:75};
+      var y2=parseInt(s.substring(0,2),10);
+      var week=parseInt(s.substring(2,4),10);
+      if(!isNaN(y2)){
+        var currentYY=new Date().getFullYear()%100;
+        var year=(y2<=currentYY+1)?(2000+y2):(1900+y2);
+        return{year:year,week:isNaN(week)?null:week,confidence:65};
+      }
+      return null;
+    }
+  },
+
+  dacor:{
+    name:'Dacor',
+    decode:function(s){
+      var y4=parseInt(s.substring(0,4),10);
+      if(y4>=1980&&y4<=2035){
+        var month=parseInt(s.substring(4,6),10);
+        return{year:y4,month:(month>=1&&month<=12)?month:null,confidence:80};
+      }
+      return null;
+    }
+  }
+};
+
+(function(){
+  for(var k in BRANDS){
+    var b=BRANDS[k];
+    if(b.family&&!b.decode){
+      (function(fam){b.decode=function(s,m){return BRANDS[fam].decode(s,m);};})(b.family);
+    }
+  }
+})();
+
+function decode(){
+  var brand=document.getElementById('brand').value.trim();
+  var serial=document.getElementById('serial').value.trim().toUpperCase();
+  var model=document.getElementById('model').value.trim().toUpperCase();
+  var resultEl=document.getElementById('result');
+  if(!brand){resultEl.innerHTML='<div class="result-box error"><p class="error-msg">Please select a brand.</p></div>';return;}
+  if(!serial){resultEl.innerHTML='<div class="result-box error"><p class="error-msg">Please enter a serial number.</p></div>';return;}
+  var bd=BRANDS[brand];
+  if(!bd||!bd.decode){resultEl.innerHTML='<div class="result-box error"><p class="error-msg">Brand not yet supported.</p></div>';return;}
+  var result;
+  try{result=bd.decode(serial,model);}catch(e){result=null;}
+  if(!result||!result.year){
+    resultEl.innerHTML='<div class="result-box error"><p class="error-msg">Could not decode serial number for <strong>'+bd.name+'</strong>.</p><p style="color:#64748b;font-size:0.82rem;margin-top:0.5rem">Double-check the serial number and selected brand. Kenmore requires a model number for best accuracy.</p></div>';
+    return;
+  }
+  var currentYear=new Date().getFullYear();
+  var age=currentYear-result.year;
+  var month=result.month||(result.week?weekToMonth(result.week):null);
+  var monthName=(month&&month>=1&&month<=12)?MONTHS[month]:null;
+  var conf=result.confidence||65;
+  var html='<div class="result-box success">';
+  html+='<div class="result-title">Decode Result &mdash; '+bd.name+'</div>';
+  html+='<div class="result-grid">';
+  html+='<div class="stat"><div class="stat-label">Manufacture Year</div><div class="stat-value">'+result.year+'</div>';
+  if(monthName)html+='<div class="stat-sub">'+monthName+(result.week?' (Week '+result.week+')':'')+'</div>';
+  else if(result.week)html+='<div class="stat-sub">Week '+result.week+'</div>';
+  html+='</div>';
+  html+='<div class="stat"><div class="stat-label">Age (Years)</div><div class="stat-value large">'+(age>=0?age:'?')+'</div>';
+  html+='<div class="stat-sub">'+(age===0?'Less than a year old':age===1?'1 year old':age+' years old')+'</div></div></div>';
+  html+='<div class="confidence">Confidence: '+conf+'%<div class="confidence-bar"><div class="confidence-fill" style="width:'+conf+'%"></div></div></div>';
+  if(result.note)html+='<p style="font-size:0.78rem;color:#f59e0b;margin-top:0.75rem">&#x26A0; '+result.note+'</p>';
+  html+='</div>';
+  resultEl.innerHTML=html;
+}
+
+document.addEventListener('keydown',function(e){if(e.key==='Enter')decode();});
+
+(function(){
+  var cc=document.getElementById('chipContainer');
+  var seen={};var names=[];
+  for(var k in BRANDS){var n=BRANDS[k].name;if(!seen[n]){seen[n]=true;names.push(n);}}
+  names.sort().forEach(function(name){var c=document.createElement('span');c.className='chip';c.textContent=name;cc.appendChild(c);});
+})();
+</script>
+</body>
+</html>
