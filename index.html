@@ -109,25 +109,33 @@ var BRANDS={
     name:'Whirlpool',
     decode:function(s){
       if(s.length<5)return null;
+      // Source: electrical-forensics.com/MajorAppliances/WhirlpoolDateCodes.html
+      // 2nd character = year code; positions 3-4 = week of year
       var yearChar=s[1].toUpperCase();
       var week=parseInt(s.substring(2,4),10);
-      var yearMap={
-        'C':[1990,2010],'D':[1991,2011],'E':[1992,2012],
-        'F':[1993,2013],'G':[1994,2014],'H':[1995,2015],
-        'J':[1996,2016],'K':[1997,2017],'L':[1998,2018],
-        'M':[1999,2019],'N':[2000,2020],'P':[2001,2021],
-        'R':[2002,2022],'S':[2003,2023],'T':[2004,2024],
-        'V':[2005,2025],'W':[2006,2026],'X':[2007,2027],
-        'Y':[2008,2028],'Z':[2009,2029]
+      // X,A-J = 1990-1999 (repeat as 2020-2029); K,L,M,P,R,S,T,U,W,Y = 2000-2009; 0-9 = 2010-2019
+      var singleYearMap={
+        'K':2000,'L':2001,'M':2002,'P':2003,'R':2004,
+        'S':2005,'T':2006,'U':2007,'W':2008,'Y':2009,
+        '0':2010,'1':2011,'2':2012,'3':2013,'4':2014,
+        '5':2015,'6':2016,'7':2017,'8':2018,'9':2019
       };
-      var years=yearMap[yearChar];
-      if(!years)return null;
+      var dualYearMap={
+        'X':[1990,2020],'A':[1991,2021],'B':[1992,2022],'C':[1993,2023],
+        'D':[1994,2024],'E':[1995,2025],'F':[1996,2026],'G':[1997,2027],
+        'H':[1998,2028],'J':[1999,2029]
+      };
       if(isNaN(week)||week<1||week>53)return null;
       var now=new Date().getFullYear();
-      if(years[1]<=now){
-        return{year:years[1],week:week,confidence:75,note:'Could also be '+years[0]+' — letter codes repeat every 20 years. Check appliance condition.'};
+      if(singleYearMap[yearChar]!==undefined){
+        return{year:singleYearMap[yearChar],week:week,confidence:90};
       }
-      return{year:years[0],week:week,confidence:85};
+      var years=dualYearMap[yearChar];
+      if(!years)return null;
+      if(years[1]<=now){
+        return{year:years[1],week:week,confidence:75,note:'Could also be '+years[0]+' — letter codes repeat every 30 years. Check appliance condition.'};
+      }
+      return{year:years[0],week:week,confidence:88};
     }
   },
   maytag:{name:'Maytag',family:'whirlpool'},
@@ -141,18 +149,41 @@ var BRANDS={
     name:'GE',
     decode:function(s){
       if(s.length<2)return null;
-      var monthMap={'A':1,'D':4,'F':6,'G':7,'H':8,'J':9,'L':10,'M':11,'R':12,'S':9,'T':10,'V':11,'Z':12};
-      var yearMap={
-        'D':1994,'E':1995,'F':1996,'G':1997,'H':1998,'J':1999,
-        'K':2000,'L':2001,'M':2002,'N':2003,'P':2004,'R':2005,
-        'S':2006,'T':2007,'V':2008,'W':2009,'X':2010,'Y':2011,
-        'Z':2012,'A':2013,'B':2014,'C':2015
-      };
+      // Source: GE official support (products.geappliances.com/appliance/gea-support-search-content?contentId=16195)
+      // Same 12 letters used for both month and year codes
+      var monthMap={'A':1,'D':2,'F':3,'G':4,'H':5,'L':6,'M':7,'R':8,'S':9,'T':10,'V':11,'Z':12};
+      // GE year codes use these 12 letters cycling every 12 years, starting L=1970
+      var cycleOrder=['L','M','R','S','T','V','Z','A','D','F','G','H'];
+      var CYCLE_BASE=1970;
+      var CYCLE_LEN=12;
       var monthChar=s[0].toUpperCase();
       var yearChar=s[1].toUpperCase();
-      var year=yearMap[yearChar];
-      if(!year)return null;
-      return{year:year,month:monthMap[monthChar]||null,confidence:82};
+      var month=monthMap[monthChar]||null;
+      var pos=cycleOrder.indexOf(yearChar);
+      if(pos===-1)return null;
+      var now=new Date().getFullYear();
+      var minYear=now-40;
+      var possibleYears=[];
+      for(var y=CYCLE_BASE+pos;y<=now+1;y+=CYCLE_LEN){
+        if(y>=minYear)possibleYears.push(y);
+      }
+      if(possibleYears.length===0)return null;
+      if(possibleYears.length===1)return{year:possibleYears[0],month:month,confidence:82};
+      var weights=possibleYears.map(function(y){
+        var age=now-y;
+        if(age<0)return 0;
+        if(age<=10)return 65;
+        if(age<=20)return 20;
+        if(age<=30)return 10;
+        return 3;
+      });
+      var totalWeight=weights.reduce(function(a,b){return a+b;},0);
+      var possibilities=possibleYears.map(function(y,i){
+        return{year:y,month:month,confidence:Math.round(weights[i]/totalWeight*100)};
+      });
+      var bestIdx=weights.indexOf(Math.max.apply(null,weights));
+      var best=possibilities[bestIdx];
+      return{year:best.year,month:month,confidence:best.confidence,possibilities:possibilities};
     }
   },
   hotpoint:{name:'Hotpoint',family:'ge'},
@@ -160,17 +191,37 @@ var BRANDS={
   frigidaire:{
     name:'Frigidaire',
     decode:function(s){
-      if(s.length<2)return null;
-      var c0=s[0].toUpperCase();
+      if(s.length<5)return null;
+      // Source: electrical-forensics.com/MajorAppliances/ElectroluxDateCodes.html
+      // Format: pos0=plant code (letter OR digit), pos1=product type (letter),
+      //         pos2=year last digit, pos3-4=week of year
+      // Example: "4A54904024" → plant=4, product=A, year digit=5, week=49 → 1995/2005/2015/2025
       var c1=s[1].toUpperCase();
-      var yearOrder='ABCDEFGHJKLMNPRSTUVWXYZ';
-      var BASE_YEAR=1985;
-      var yearIdx=yearOrder.indexOf(c0);
-      if(yearIdx===-1)return null;
-      var year=BASE_YEAR+yearIdx;
-      var monthMap={'A':1,'B':2,'C':3,'D':4,'E':5,'F':6,'G':7,'H':8,'J':9,'K':10,'L':11,'M':12};
-      var month=monthMap[c1]||null;
-      return{year:year,month:month,confidence:85};
+      var yearDigit=parseInt(s[2],10);
+      var week=parseInt(s.substring(3,5),10);
+      if(c1<'A'||c1>'Z')return null;
+      if(isNaN(yearDigit)||isNaN(week)||week<1||week>53)return null;
+      var now=new Date().getFullYear();
+      var possibleYears=[];
+      for(var base=1980;base<=now+1;base+=10){
+        var y=base+yearDigit;
+        if(y>=(now-40)&&y<=now+1)possibleYears.push(y);
+      }
+      if(possibleYears.length===0)return null;
+      if(possibleYears.length===1)return{year:possibleYears[0],week:week,confidence:80};
+      // Weight strongly toward recent years (matching observed homespy behavior)
+      var weights=possibleYears.map(function(yr){
+        var age=now-yr;
+        if(age<0)return 0;
+        if(age<=5)return 70;
+        if(age<=15)return 20;
+        if(age<=25)return 7;
+        return 3;
+      });
+      var totalWeight=weights.reduce(function(a,b){return a+b;},0);
+      var possibilities=possibleYears.map(function(yr,i){return{year:yr,week:week,confidence:Math.round(weights[i]/totalWeight*100)};});
+      var bestIdx=weights.indexOf(Math.max.apply(null,weights));
+      return{year:possibleYears[bestIdx],week:week,confidence:Math.round(weights[bestIdx]/totalWeight*100),possibilities:possibilities};
     }
   },
   electrolux:{name:'Electrolux',family:'frigidaire'},
@@ -182,48 +233,67 @@ var BRANDS={
   lg:{
     name:'LG',
     decode:function(s){
-      if(s.length<5)return null;
-      var y2=parseInt(s.substring(1,3),10);
-      var week=parseInt(s.substring(3,5),10);
-      if(isNaN(y2))return null;
-      var currentYY=new Date().getFullYear()%100;
-      var year=(y2<=currentYY+1)?(2000+y2):(1900+y2);
-      return{year:year,week:isNaN(week)?null:week,confidence:82};
+      if(s.length<3)return null;
+      // Source: electrical-forensics.com/MajorAppliances/LGDateCodes.html
+      // pos0 = last digit of year; pos1-2 = month (01-12)
+      var yearDigit=parseInt(s[0],10);
+      var month=parseInt(s.substring(1,3),10);
+      if(isNaN(yearDigit)||isNaN(month)||month<1||month>12)return null;
+      var now=new Date().getFullYear();
+      var currentYY=now%10;
+      // Single digit year — could be this decade or last decade
+      var year1=Math.floor(now/10)*10+yearDigit;
+      var year2=year1-10;
+      if(year1>now+1)year1-=10;
+      if(year1===year2)return{year:year1,month:month,confidence:82};
+      var age1=now-year1,age2=now-year2;
+      var w1=(age1>=0&&age1<=15)?65:(age1>15&&age1<=25?20:3);
+      var w2=(age2>=0&&age2<=15)?65:(age2>15&&age2<=25?20:3);
+      var total=w1+w2;
+      if(w1>=w2)return{year:year1,month:month,confidence:Math.round(w1/total*100),possibilities:[{year:year1,month:month,confidence:Math.round(w1/total*100)},{year:year2,month:month,confidence:Math.round(w2/total*100)}]};
+      return{year:year2,month:month,confidence:Math.round(w2/total*100),possibilities:[{year:year1,month:month,confidence:Math.round(w1/total*100)},{year:year2,month:month,confidence:Math.round(w2/total*100)}]};
     }
   },
 
   samsung:{
     name:'Samsung',
     decode:function(s){
-      if(s.length<6)return null;
+      // Source: electrical-forensics.com/MajorAppliances/SamsungDateCodes.html
+      // 11-char: year at pos3, month at pos4. 15-char: year at pos7, month at pos8
       var yearMap={
-        'A':2001,'B':2002,'C':2003,'D':2004,'E':2005,'F':2006,
-        'G':2007,'H':2008,'J':2009,'K':2010,'L':2011,'M':2012,
-        'N':2013,'P':2014,'R':2015,'S':2016,'T':2017,'V':2018,
-        'W':2019,'X':2020,'Y':2021,'Z':2022
+        'R':2001,'T':2002,'W':2003,'X':2004,'Y':2005,'A':2006,'L':2006,
+        'P':2007,'Q':2008,'S':2009,'Z':2010,'B':2011,'C':2012,'D':2013,
+        'F':2014,'G':2015,'H':2016,'J':2017,'K':2018,'M':2019,'N':2020,
+        'V':2021,'E':2022,'U':2023,'I':2024
       };
-      var yearChar=s[3].toUpperCase();
-      var week=parseInt(s.substring(4,6),10);
+      // Month: digits 1-9 = Jan-Sep; A=Oct, B=Nov, C=Dec
+      var monthMap={'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'A':10,'B':11,'C':12};
+      var yPos,mPos;
+      if(s.length===15){yPos=7;mPos=8;}
+      else if(s.length===11){yPos=3;mPos=4;}
+      else return null;
+      var yearChar=s[yPos].toUpperCase();
+      var monthChar=s[mPos].toUpperCase();
       var year=yearMap[yearChar];
+      var month=monthMap[monthChar]||null;
       if(!year)return null;
-      return{year:year,week:isNaN(week)?null:week,confidence:75,note:'Samsung serial format varies by product line. Verify against the label date if available.'};
+      return{year:year,month:month,confidence:78,note:'Samsung serial format varies by product line. Verify against the label date if available.'};
     }
   },
 
   bosch:{
     name:'Bosch',
     decode:function(s){
-      var m=s.match(/^FD\s*(\d{2})(\d{2})/i);
+      // Source: electrical-forensics.com/MajorAppliances/BoschDateCodes.html
+      // FD format: FD + 1 decade digit (d) + 1 year digit (y) + 2 month digits
+      // year = 1920 + d*10 + y  (e.g. FD9111... → 1920+90+1=2011, month=11=November)
+      var m=s.match(/^FD\s*(\d)(\d)(\d{2})/i);
       if(m){
-        var yr=parseInt(m[1],10);
-        var wk=parseInt(m[2],10);
-        var year=yr+(yr>=88?1900:2000);
-        return{year:year,week:wk,confidence:92,note:'FD format — highly reliable.'};
-      }
-      var y2=parseInt(s.substring(0,2),10);
-      var wk2=parseInt(s.substring(2,4),10);
-      if(!isNaN(y2)&&y2>=80){
-        return{year:1900+y2,week:isNaN(wk2)?null:wk2,confidence:65};
+        var d=parseInt(m[1],10);
+        var y=parseInt(m[2],10);
+        var month=parseInt(m[3],10);
+        var year=1920+d*10+y;
+        return{year:year,month:(month>=1&&month<=12)?month:null,confidence:92,note:'FD format — highly reliable.'};
       }
       return null;
     }
@@ -234,12 +304,20 @@ var BRANDS={
     name:'Rheem',
     decode:function(s){
       if(s.length<4)return null;
-      var week=parseInt(s.substring(0,2),10);
+      // Source: rheem.com/how-to-locate-and-read-your-rheem-water-heating-serial-numbers/
+      // Current format: MMYY###### (month + 2-digit year). Older style: WWYY (week + year).
+      // If first 2 digits > 12, treat as week (older style); otherwise treat as month.
+      var first2=parseInt(s.substring(0,2),10);
       var y2=parseInt(s.substring(2,4),10);
-      if(isNaN(week)||isNaN(y2))return null;
-      if(week<1||week>53)return null;
+      if(isNaN(first2)||isNaN(y2))return null;
       var year=y2+(y2>=70?1900:2000);
-      return{year:year,week:week,confidence:88};
+      if(first2>=1&&first2<=12){
+        return{year:year,month:first2,confidence:88};
+      }
+      if(first2>=1&&first2<=53){
+        return{year:year,week:first2,confidence:82,note:'Older Rheem week-based serial format.'};
+      }
+      return null;
     }
   },
   ruud:{name:'Ruud',family:'rheem'},
@@ -248,13 +326,26 @@ var BRANDS={
     name:'A.O. Smith',
     decode:function(s){
       if(s.length<4)return null;
-      var decadeMap={'A':1964,'B':1974,'C':1984,'D':1994,'E':2004,'F':2014,'G':2024};
-      var base=decadeMap[s[0].toUpperCase()];
-      if(!base)return null;
-      var yr=parseInt(s[1],10);
-      var week=parseInt(s.substring(2,4),10);
-      if(isNaN(yr))return null;
-      return{year:base+yr,week:isNaN(week)?null:week,confidence:90};
+      // Source: inspectapedia.com/plumbing/AO-Smith-Water-Heater-Age-Manuals.php
+      // Modern format (2008+): YYWW###### where YY=2-digit year, WW=week
+      // Older format: letter (decade) + single digit (year within decade) + week
+      var c0=s[0].toUpperCase();
+      if(c0>='A'&&c0<='Z'){
+        // Older letter-based format: letter=decade start, digit=year offset, then week
+        var decadeMap={'A':1964,'B':1974,'C':1984,'D':1994,'E':2004,'F':2014,'G':2024};
+        var base=decadeMap[c0];
+        if(!base)return null;
+        var yr=parseInt(s[1],10);
+        var week=parseInt(s.substring(2,4),10);
+        if(isNaN(yr))return null;
+        return{year:base+yr,week:isNaN(week)?null:week,confidence:88};
+      }
+      // Modern numeric YYWW format
+      var y2=parseInt(s.substring(0,2),10);
+      var week2=parseInt(s.substring(2,4),10);
+      if(isNaN(y2)||isNaN(week2)||week2<1||week2>53)return null;
+      var year=y2+(y2>=70?1900:2000);
+      return{year:year,week:week2,confidence:90};
     }
   },
   state:{name:'State Water Heaters',family:'aosmith'},
@@ -289,13 +380,15 @@ var BRANDS={
   speedqueen:{
     name:'Speed Queen',
     decode:function(s){
-      if(s.length<6)return null;
-      var y2=parseInt(s.substring(2,4),10);
-      var week=parseInt(s.substring(4,6),10);
-      if(isNaN(y2))return null;
+      if(s.length<4)return null;
+      // Source: homeappliances.blog/unlock-speed-queen-secrets-find-age-model
+      // Modern format: first 2 digits = year (YY), next 2 digits = month (MM)
+      var y2=parseInt(s.substring(0,2),10);
+      var month=parseInt(s.substring(2,4),10);
+      if(isNaN(y2)||isNaN(month)||month<1||month>12)return null;
       var currentYY=new Date().getFullYear()%100;
       var year=(y2<=currentYY+1)?(2000+y2):(1900+y2);
-      return{year:year,week:isNaN(week)?null:week,confidence:75};
+      return{year:year,month:month,confidence:78};
     }
   },
 
@@ -315,14 +408,16 @@ var BRANDS={
   viking:{
     name:'Viking',
     decode:function(s){
-      var y4=parseInt(s.substring(0,4),10);
-      if(y4>=1980&&y4<=2035)return{year:y4,confidence:75};
-      var y2=parseInt(s.substring(0,2),10);
-      var week=parseInt(s.substring(2,4),10);
-      if(!isNaN(y2)){
-        var currentYY=new Date().getFullYear()%100;
-        var year=(y2<=currentYY+1)?(2000+y2):(1900+y2);
-        return{year:year,week:isNaN(week)?null:week,confidence:65};
+      // Source: vikinggroupinc.com/replace/Year%20of%20mfg%20ref.pdf
+      // First 6 digits = MMDDYY (month, day, 2-digit year)
+      // Example: "020713..." = February 7, 2013
+      if(s.length<6)return null;
+      var mm=parseInt(s.substring(0,2),10);
+      var dd=parseInt(s.substring(2,4),10);
+      var y2=parseInt(s.substring(4,6),10);
+      if(mm>=1&&mm<=12&&dd>=1&&dd<=31&&!isNaN(y2)){
+        var year=y2+(y2>=70?1900:2000);
+        return{year:year,month:mm,confidence:88};
       }
       return null;
     }
@@ -331,10 +426,18 @@ var BRANDS={
   dacor:{
     name:'Dacor',
     decode:function(s){
-      var y4=parseInt(s.substring(0,4),10);
-      if(y4>=1980&&y4<=2035){
-        var month=parseInt(s.substring(4,6),10);
-        return{year:y4,month:(month>=1&&month<=12)?month:null,confidence:80};
+      // Source: studylib.net/doc/18851617/serial-number-format---dacor-service-portal
+      // Format: 2 letters (product+revision) + 2-digit year + 2-digit week + unique number
+      // Example: FB07060265 = range (F), revision (B), year 2007, week 06
+      if(s.length<6)return null;
+      var c0=s[0].toUpperCase();
+      var c1=s[1].toUpperCase();
+      if(c0>='A'&&c0<='Z'&&c1>='A'&&c1<='Z'){
+        var y2=parseInt(s.substring(2,4),10);
+        var week=parseInt(s.substring(4,6),10);
+        if(isNaN(y2)||isNaN(week)||week<1||week>52)return null;
+        var year=y2+(y2>=70?1900:2000);
+        return{year:year,week:week,confidence:85};
       }
       return null;
     }
@@ -361,8 +464,13 @@ function decode(){
   if(!bd||!bd.decode){resultEl.innerHTML='<div class="result-box error"><p class="error-msg">Brand not yet supported.</p></div>';return;}
   var result;
   try{result=bd.decode(serial,model);}catch(e){result=null;}
+  var headerHtml='<div style="display:flex;gap:2rem;flex-wrap:wrap;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #374151">'
+    +'<div><div style="color:#9ca3af;font-size:0.75rem;letter-spacing:.05em;text-transform:uppercase">Brand</div><div style="font-weight:700;font-size:1.1rem;letter-spacing:.05em">'+bd.name.toUpperCase()+'</div></div>'
+    +(serial?'<div><div style="color:#9ca3af;font-size:0.75rem;letter-spacing:.05em;text-transform:uppercase">Serial #</div><div style="font-weight:700;font-size:1.1rem;font-family:monospace">'+serial+'</div></div>':'')
+    +(model?'<div><div style="color:#9ca3af;font-size:0.75rem;letter-spacing:.05em;text-transform:uppercase">Model #</div><div style="font-weight:700;font-size:1.1rem;font-family:monospace">'+model+'</div></div>':'')
+    +'</div>';
   if(!result||!result.year){
-    resultEl.innerHTML='<div class="result-box error"><p class="error-msg">Could not decode serial number for <strong>'+bd.name+'</strong>.</p><p style="color:#64748b;font-size:0.82rem;margin-top:0.5rem">Double-check the serial number and selected brand. Kenmore requires a model number for best accuracy.</p></div>';
+    resultEl.innerHTML='<div class="result-box error">'+headerHtml+'<p class="error-msg">Could not decode serial number for <strong>'+bd.name+'</strong>.</p><p style="color:#64748b;font-size:0.82rem;margin-top:0.5rem">Double-check the serial number and selected brand. Kenmore requires a model number for best accuracy.</p></div>';
     return;
   }
   var currentYear=new Date().getFullYear();
@@ -370,21 +478,31 @@ function decode(){
   var month=result.month||(result.week?weekToMonth(result.week):null);
   var monthName=(month&&month>=1&&month<=12)?MONTHS[month]:null;
   var conf=result.confidence||65;
-  var html='<div class="result-box success">';
-  html+='<div class="result-title">Decode Result &mdash; '+bd.name+'</div>';
-  html+='<div class="result-grid">';
-  html+='<div class="stat"><div class="stat-label">Manufacture Year</div><div class="stat-value">'+result.year+'</div>';
-  if(monthName)html+='<div class="stat-sub">'+monthName+(result.week?' (Week '+result.week+')':'')+'</div>';
-  else if(result.week)html+='<div class="stat-sub">Week '+result.week+'</div>';
-  html+='</div>';
-  html+='<div class="stat"><div class="stat-label">Age (Years)</div><div class="stat-value large">'+(age>=0?age:'?')+'</div>';
-  html+='<div class="stat-sub">'+(age===0?'Less than a year old':age===1?'1 year old':age+' years old')+'</div></div></div>';
-  html+='<div class="confidence">Confidence: '+conf+'%<div class="confidence-bar"><div class="confidence-fill" style="width:'+conf+'%"></div></div></div>';
-  if(result.note)html+='<p style="font-size:0.78rem;color:#f59e0b;margin-top:0.75rem">&#x26A0; '+result.note+'</p>';
+  var html='<div class="result-box success">'+headerHtml;
+  if(result.possibilities&&result.possibilities.length>1){
+    html+='<p style="color:#9ca3af;font-size:0.9rem;margin-bottom:0.75rem">The serial number provided has multiple possible manufacture dates.</p>';
+    result.possibilities.forEach(function(p){
+      var pMonth=p.month?MONTHS[p.month]+' ':'';
+      var isHighest=p.confidence===conf;
+      html+='<p style="'+(isHighest?'font-weight:600;color:#e5e7eb':'color:#9ca3af')+';font-size:0.9rem;margin:0.25rem 0">';
+      html+=pMonth+p.year+' '+p.confidence+'% likely.</p>';
+    });
+    html+='<div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #374151"><div class="confidence">Most likely: '+conf+'%<div class="confidence-bar"><div class="confidence-fill" style="width:'+conf+'%"></div></div></div></div>';
+  } else {
+    html+='<div class="result-title">Decode Result &mdash; '+bd.name+'</div>';
+    html+='<div class="result-grid">';
+    html+='<div class="stat"><div class="stat-label">Manufacture Year</div><div class="stat-value">'+result.year+'</div>';
+    if(monthName)html+='<div class="stat-sub">'+monthName+(result.week?' (Week '+result.week+')':'')+'</div>';
+    else if(result.week)html+='<div class="stat-sub">Week '+result.week+'</div>';
+    html+='</div>';
+    html+='<div class="stat"><div class="stat-label">Age (Years)</div><div class="stat-value large">'+(age>=0?age:'?')+'</div>';
+    html+='<div class="stat-sub">'+(age===0?'Less than a year old':age===1?'1 year old':age+' years old')+'</div></div></div>';
+    html+='<div class="confidence">Confidence: '+conf+'%<div class="confidence-bar"><div class="confidence-fill" style="width:'+conf+'%"></div></div></div>';
+    if(result.note)html+='<p style="font-size:0.78rem;color:#f59e0b;margin-top:0.75rem">&#x26A0; '+result.note+'</p>';
+  }
   html+='</div>';
   resultEl.innerHTML=html;
 }
-
 document.addEventListener('keydown',function(e){if(e.key==='Enter')decode();});
 
 (function(){
@@ -393,6 +511,37 @@ document.addEventListener('keydown',function(e){if(e.key==='Enter')decode();});
   for(var k in BRANDS){var n=BRANDS[k].name;if(!seen[n]){seen[n]=true;names.push(n);}}
   names.sort().forEach(function(name){var c=document.createElement('span');c.className='chip';c.textContent=name;cc.appendChild(c);});
 })();
+</script>
+<!-- Code injected by live-server -->
+<script type="text/javascript">
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function() {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					head.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					head.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function(msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			console.log('Live reload enabled.');
+		})();
+	}
+	// ]]>
 </script>
 </body>
 </html>
